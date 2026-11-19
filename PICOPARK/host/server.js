@@ -5,7 +5,7 @@ const path = require("path");
 const Matter = require("matter-js");
 const os = require("os"); 
 
-const { Engine, World, Bodies, Body } = Matter;
+const { Engine, World, Bodies, Body, Events } = Matter;
 
 const app = express();
 const server = http.createServer(app);
@@ -60,11 +60,30 @@ const LEVELS = {
   }
 };
 
+// Un jugador "toca" la puerta si su cuerpo (32x40) se superpone con ella (50x70)
+function touchesDoor(body) {
+  const d = LEVELS[currentLevel].door;
+  return Math.abs(body.position.x - d.x) < 25 + 16 &&
+         Math.abs(body.position.y - (d.y + 5)) < 35 + 20;
+}
+
 function initLevel() {
   engine = Engine.create();
   world = engine.world;
   engine.gravity.y = 1.0;
   isDoorOpen = false;
+
+  // Marca "en el suelo" cuando un jugador choca con algo que está debajo de él
+  Events.on(engine, "collisionStart collisionActive", (e) => {
+    for (const pair of e.pairs) {
+      const ny = Math.abs(pair.collision.normal.y);
+      [[pair.bodyA, pair.bodyB], [pair.bodyB, pair.bodyA]].forEach(([a, b]) => {
+        if (a.playerId && players[a.playerId] && ny > 0.5 && b.position.y > a.position.y + 10) {
+          players[a.playerId].onGround = true;
+        }
+      });
+    }
+  });
 
   const wallOptions = { isStatic: true };
   World.add(world, [
@@ -88,7 +107,8 @@ function initLevel() {
   Object.keys(lobbyPlayers).forEach((id, index) => {
     const x = 100 + index * 50;
     const y = 500;
-    const body = Bodies.rectangle(x, y, 32, 40, { inertia: Infinity, friction: 0.2 });
+    const body = Bodies.rectangle(x, y, 32, 40, { inertia: Infinity, friction: 0, frictionStatic: 0 });
+    body.playerId = id;
     World.add(world, body);
     
     players[id] = {
@@ -96,6 +116,8 @@ function initLevel() {
       body: body,
       name: lobbyPlayers[id].name,
       color: lobbyPlayers[id].color,
+      onGround: false,
+      atDoor: false,
       inputs: { left: false, right: false, jump: false }
     };
   });
@@ -107,6 +129,7 @@ function initLevel() {
 setInterval(() => {
   if (gameStatus !== "playing") return;
 
+  for (let id in players) players[id].onGround = false;
   Engine.update(engine, 1000 / 60);
 
   for (let id in players) {
@@ -124,12 +147,9 @@ setInterval(() => {
       isDoorOpen = true;
     }
 
-    // --- VICTORIA PROTEGIDA ---
-    if (gameStatus === "playing" && isDoorOpen && Math.hypot(p.body.position.x - LEVELS[1].door.x, p.body.position.y - LEVELS[1].door.y) < 80) {
-      gameStatus = "victory";
-      victorySelection = 0;
-      io.emit("gameStatusUpdate", "victory");
-      io.emit("updateVictorySelection", 0);
+    // Cada jugador debe TOCAR la puerta (con la llave ya obtenida)
+    if (isDoorOpen && !p.atDoor && touchesDoor(p.body)) {
+      p.atDoor = true;
     }
 
     let vx = 0;
@@ -138,9 +158,19 @@ setInterval(() => {
 
     Body.setVelocity(p.body, { x: vx, y: p.body.velocity.y });
 
-    if (p.inputs.jump && Math.abs(p.body.velocity.y) < 0.01) {
+    // Salto: permitido si está apoyado en algo (se puede saltar caminando)
+    if (p.inputs.jump && p.onGround) {
       Body.setVelocity(p.body, { x: p.body.velocity.x, y: -12 });
     }
+  }
+
+  // Victoria: la puerta está abierta y TODOS los jugadores ya la tocaron
+  const ids = Object.keys(players);
+  if (gameStatus === "playing" && isDoorOpen && ids.length > 0 && ids.every(id => players[id].atDoor)) {
+    gameStatus = "victory";
+    victorySelection = 0;
+    io.emit("gameStatusUpdate", "victory");
+    io.emit("updateVictorySelection", 0);
   }
 
   let state = {};
@@ -149,11 +179,20 @@ setInterval(() => {
       x: players[id].body.position.x,
       y: players[id].body.position.y,
       color: players[id].color,
-      name: players[id].name
+      name: players[id].name,
+      atDoor: players[id].atDoor
     };
   }
 
-  io.emit("gameState", { players: state, doorOpen: isDoorOpen, coin: { x: LEVELS[1].key.x, y: LEVELS[1].key.y, visible: !isDoorOpen } });
+  io.emit("gameState", {
+    players: state,
+    doorOpen: isDoorOpen,
+    doorProgress: { done: ids.filter(id => players[id].atDoor).length, total: ids.length },
+    coin: { x: LEVELS[1].key.x, y: LEVELS[1].key.y, visible: !isDoorOpen },
+    boxes: world.bodies
+      .filter(b => !b.isStatic && !b.playerId)
+      .map(b => ({ x: b.position.x, y: b.position.y, w: 50, h: 50, angle: b.angle }))
+  });
 }, 1000 / 60);
 
 io.on("connection", (socket) => {

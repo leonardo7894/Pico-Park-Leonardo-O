@@ -38,7 +38,6 @@ socket.on("gameState", (state) => {
 const startButton = document.getElementById("btn");
 if (startButton) {
   startButton.onclick = () => {
-    // 🔥 HOY: Cambiado a < 1 para poder testear solo. Mañana volvelo a < 2
     if (lobbyPlayers.length < 1) {
       alert("Se necesitan mínimo 1 jugador");
       return;
@@ -99,7 +98,7 @@ function drawLobby() {
 // ─────────────────────────────
 
 function drawGame() {
-  ctx.fillStyle = "#111";
+  ctx.fillStyle = "#df1919";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Piso
@@ -133,7 +132,7 @@ canvas.addEventListener("click", (e) => {
   const insideButton = x >= 450 && x <= 750 && y >= 450 && y <= 530;
   if (!insideButton) return;
 
-  // 🔥 HOY: Cambiado a < 1 para pruebas. Mañana lo cambias a < 2
+  // HOY: Cambiado a < 1 para pruebas. Mañana lo cambias a < 2
   if (lobbyPlayers.length < 1) {
     alert("Se necesitan mínimo 1 jugador");
     return;
