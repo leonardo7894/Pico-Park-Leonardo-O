@@ -1,2 +1,0 @@
-Cosas para instalar:
-bun add elysia,
