@@ -11,6 +11,7 @@ export interface PlayerInfo {
 interface GameSocket {
   connected: boolean;
   player: PlayerInfo | null;
+  hasConnected: boolean;
   error: string | null;
   sendInput: (key: "left" | "right" | "jump" | "start", pressed: boolean) => void;
 }
@@ -20,10 +21,15 @@ export function useGameSocket(address: string): GameSocket {
 
   const [connected, setConnected] = useState(false);
   const [player, setPlayer] = useState<PlayerInfo | null>(null);
+  const [hasConnected, setHasConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setConnected(false);
+    setPlayer(null);
+    setHasConnected(false);
     if (!address) return;
+    setError(null);
 
     const url = address.startsWith("http") ? address : `http://${address}`;
 
@@ -32,7 +38,7 @@ export function useGameSocket(address: string): GameSocket {
     const socket = io(url, {
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionAttempts: 3,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       timeout: 3500,
     });
@@ -42,6 +48,7 @@ export function useGameSocket(address: string): GameSocket {
     socket.on("connect", () => {
       console.log("CONECTADO AL HOST");
       setConnected(true);
+      setHasConnected(true);
       setError(null);
       socket.emit("joinAsPlayer");
     });
@@ -62,12 +69,22 @@ export function useGameSocket(address: string): GameSocket {
       setPlayer(null);
     });
 
+    // Un connect_error suelto NO es un fallo definitivo: socket.io reintenta solo.
+    // Sólo avisamos cuando se agotan los reintentos (reconnect_failed).
     socket.on("connect_error", (err) => {
-      console.log("ERROR DE CONEXIÓN SOCKET:", err.message);
+      console.log("ERROR DE CONEXIÓN SOCKET (reintentando):", err.message);
+    });
+
+    socket.io.on("reconnect_failed", () => {
       setConnected(false);
       setPlayer(null);
       setError(
-        `No se pudo conectar al Host.\n\nVerificá:\n• Que la PC y el Celu estén en la misma red Wi-Fi.\n• Que el Firewall de Windows no esté bloqueando el puerto.\n• Que la IP sea idéntica a la del Host.`
+        `No se pudo conectar al Host.
+
+Verificá:
+• Que la PC y el celu estén en la misma red Wi-Fi.
+• Que el Firewall de Windows no esté bloqueando el puerto.
+• Que la IP sea idéntica a la del Host.`
       );
     });
 
@@ -77,6 +94,7 @@ export function useGameSocket(address: string): GameSocket {
       socket.off("gameFull");
       socket.off("disconnect");
       socket.off("connect_error");
+      socket.io.off("reconnect_failed");
       socket.disconnect();
     };
   }, [address]);
@@ -102,6 +120,7 @@ export function useGameSocket(address: string): GameSocket {
   return {
     connected,
     player,
+    hasConnected,
     error,
     sendInput,
   };

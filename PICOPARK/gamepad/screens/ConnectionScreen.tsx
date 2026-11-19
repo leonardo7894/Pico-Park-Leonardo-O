@@ -10,9 +10,12 @@ import {
 
 interface Props {
   onConnect: (address: string) => void;
+  onCancel?: () => void;
+  connecting?: boolean;
+  error?: string | null;
 }
 
-export default function ConnectionScreen({ onConnect }: Props) {
+export default function ConnectionScreen({ onConnect, onCancel, connecting, error }: Props) {
   const [address, setAddress] = useState("");
 
   function connect() {
@@ -41,9 +44,17 @@ export default function ConnectionScreen({ onConnect }: Props) {
         autoCapitalize="none"
       />
 
-      <TouchableOpacity style={styles.button} onPress={connect}>
-        <Text style={styles.buttonText}>Conectar</Text>
-      </TouchableOpacity>
+      {error && !connecting ? <Text style={styles.error}>{error}</Text> : null}
+
+      {connecting ? (
+        <TouchableOpacity style={[styles.button, styles.buttonBusy]} onPress={onCancel}>
+          <Text style={styles.buttonText}>Conectando... (tocar para cancelar)</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={styles.button} onPress={connect}>
+          <Text style={styles.buttonText}>Conectar</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -87,6 +98,18 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 40,
     borderRadius: 10,
+  },
+
+  buttonBusy: {
+    backgroundColor: "#f39c12",
+  },
+
+  error: {
+    color: "#ff7675",
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: "left",
+    width: "100%",
   },
 
   buttonText: {

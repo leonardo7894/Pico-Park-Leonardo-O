@@ -6,43 +6,41 @@ import GamepadScreen from "../screens/GamepadScreen";
 import { useGameSocket } from "../hooks/useGameSocket";
 
 export default function App() {
-  // Guardamos la dirección IP a la que se va a intentar conectar el hook
   const [address, setAddress] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
-  // Inicializamos el hook en la raíz pasándole la IP elegida (o vacío si no hay)
-  const { connected, player, error, sendInput } = useGameSocket(address || "");
+  const { connected, player, hasConnected, error, sendInput } = useGameSocket(address || "");
 
-  // Si el hook detecta un error de capa de red, salta la alerta y resetea la IP
+  // Si se agotan los reintentos (o la sala está llena) volvemos a la pantalla de IP
+  // y mostramos el error ahí, sin Alert que pueda pisar una conexión exitosa.
   useEffect(() => {
-    if (error && address) {
-      Alert.alert("Error de Conexión", error, [
-        {
-          text: "OK",
-          onPress: () => setAddress(null), // Limpia la dirección para reintentar de cero
-        },
-      ]);
+    if (error && address && !connected) {
+      setConnectError(error);
+      setAddress(null);
     }
-  }, [error, address]);
+  }, [error, address, connected]);
 
-  // 🔥 CLAVE: Si no hay una IP ingresada O si el socket todavía NO conectó con éxito,
-  // la app te retiene de manera estricta en la pantalla de login.
-  if (!address || !connected) {
+  // Una vez que conectó alguna vez, se muestra el gamepad (aunque haya una
+  // reconexión momentánea, el estado se ve en la barra superior).
+  if (!address || !hasConnected) {
     return (
       <ConnectionScreen
+        connecting={!!address}
+        error={connectError}
+        onCancel={() => setAddress(null)}
         onConnect={(addr) => {
-          // Filtro inicial: si escribe cualquier verdura sin puntos ni números correctos, se frena acá
           const ipRegex = /^[0-9a-zA-Z.:_-]+$/;
           if (!ipRegex.test(addr) || addr.trim().length < 4) {
             Alert.alert("IP Inválida", "Por favor ingresá una dirección correcta (Ej: 192.168.1.45:3000)");
             return;
           }
-          setAddress(addr); // Si pasa el regex, el hook arranca a conectar de fondo
+          setConnectError(null);
+          setAddress(addr);
         }}
       />
     );
   }
 
-  // SÓLO si "address" existe y "connected" es true, te abre el gamepad pasándole los datos ya conectados
   return (
     <>
       <StatusBar hidden />
@@ -52,7 +50,7 @@ export default function App() {
         connected={connected}
         player={player}
         sendInput={sendInput}
-        onDisconnect={() => setAddress(null)} 
+        onDisconnect={() => setAddress(null)}
       />
     </>
   );
