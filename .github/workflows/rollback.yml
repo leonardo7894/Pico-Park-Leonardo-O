@@ -1,0 +1,17 @@
+name: Rollback PicoPark
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a restaurar (ej: sha-a1b2c3d o 1.0.0)"
+        required: true
+
+jobs:
+  rollback:
+    runs-on: [self-hosted, picopark-vm]
+    steps:
+      - name: Restaurar version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: /opt/picopark-deploy/deploy.sh "$TAG"

@@ -1,0 +1,64 @@
+name: CI-CD PicoPark
+
+on:
+  push:
+    branches: [main]
+    paths: ["PICOPARK/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-picopark
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: vars
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Imagen del juego (host)
+        uses: docker/build-push-action@v6
+        with:
+          context: PICOPARK/host
+          push: true
+          tags: |
+            ghcr.io/leonardo7894/picopark-host:${{ steps.vars.outputs.tag }}
+            ghcr.io/leonardo7894/picopark-host:latest
+
+      - name: Imagen del mando (gamepad)
+        uses: docker/build-push-action@v6
+        with:
+          context: PICOPARK/gamepad
+          push: true
+          tags: |
+            ghcr.io/leonardo7894/picopark-gamepad:${{ steps.vars.outputs.tag }}
+            ghcr.io/leonardo7894/picopark-gamepad:latest
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, picopark-vm]
+    steps:
+      - name: Desplegar en la VM
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+        run: /opt/picopark-deploy/deploy.sh "$TAG"
+
+      - name: Verificacion posterior
+        run: |
+          cd /opt/picopark-deploy
+          docker compose ps
+          curl -fsS -o /dev/null -w "HTTP %{http_code}\n" http://localhost:3000
